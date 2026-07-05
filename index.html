@@ -345,6 +345,106 @@
     background: var(--border);
     margin: 12px 0;
   }
+
+  /* Live map */
+  .map-legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .map-legend-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+  }
+  .map-dot-swatch {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  }
+  .map-dot-swatch.noor { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .map-dot-swatch.ayl { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+  .live-map-wrap {
+    width: 100%;
+    max-height: 70vh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+  }
+  .live-map-wrap svg {
+    width: 100%;
+    height: auto;
+    max-height: 70vh;
+    display: block;
+  }
+  .map-line {
+    stroke: var(--border);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+  }
+  .map-station-dot {
+    fill: var(--surface);
+    stroke: var(--accent2);
+    stroke-width: 2;
+  }
+  .map-station-dot.terminus {
+    fill: var(--accent2);
+    stroke: var(--accent2);
+  }
+  .map-station-label {
+    fill: var(--text);
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 7.3px;
+    font-weight: 600;
+  }
+  .map-train {
+    stroke: none;
+    transition: cx 1.8s linear, cy 1.8s linear, opacity 0.25s ease;
+  }
+  .map-train-glow {
+    stroke: none;
+    transition: cx 1.8s linear, cy 1.8s linear, opacity 0.25s ease;
+    opacity: 0.28;
+    filter: blur(4px);
+  }
+  .map-train-halo {
+    stroke: none;
+    transition: cx 1.8s linear, cy 1.8s linear, opacity 0.25s ease;
+    opacity: 0.12;
+    filter: blur(9px);
+  }
+  .map-train.dir-noor, .map-train-glow.dir-noor, .map-train-halo.dir-noor { fill: var(--accent); }
+  .map-train.dir-ayl, .map-train-glow.dir-ayl, .map-train-halo.dir-ayl { fill: var(--gold); }
+
+  /* چشمک زدن قطار در زمان توقف در ایستگاه — نور فقط بین 0 و نور عادی همان لایه سوئیچ می‌شود
+     (بدون افزایش نور نسبت به حالت عادی) */
+  @keyframes trainBlinkDot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  @keyframes trainBlinkGlow {
+    0%, 100% { opacity: 0.28; }
+    50% { opacity: 0; }
+  }
+  @keyframes trainBlinkHalo {
+    0%, 100% { opacity: 0.12; }
+    50% { opacity: 0; }
+  }
+  .map-train.stopped {
+    animation: trainBlinkDot 0.9s ease-in-out infinite;
+  }
+  .map-train-glow.stopped {
+    animation: trainBlinkGlow 0.9s ease-in-out infinite;
+    animation-delay: 0.1s;
+  }
+  .map-train-halo.stopped {
+    animation: trainBlinkHalo 0.9s ease-in-out infinite;
+    animation-delay: 0.15s;
+  }
+  .map-endpoint-label {
+    fill: var(--muted);
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -363,13 +463,16 @@
       <div class="clock-display" id="clock">--:--:--</div>
       <div id="dayBadge"></div>
     </div>
-    <div class="date-display" id="dateDisplay"></div>
+    <div>
+      <div class="date-display" id="dateDisplay"></div>
+    </div>
   </div>
 
   <div class="tabs">
     <button class="tab active" onclick="switchTab('next')">⏱ قطار بعدی</button>
     <button class="tab" onclick="switchTab('plan')">🗓 برنامه‌ریزی</button>
     <button class="tab" onclick="switchTab('full')">📋 جدول کامل</button>
+    <button class="tab" onclick="switchTab('map')">🛰 نقشه زنده</button>
   </div>
 
   <!-- TAB: Next Train -->
@@ -437,7 +540,7 @@
       <div style="margin-bottom:8px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn" style="flex:1;font-size:12px;padding:8px" id="dayNorm" onclick="setDayType('normal')">روزهای عادی</button>
-          <button class="btn btn-inactive" style="flex:1;font-size:12px;padding:8px" id="dayHoliday" onclick="setDayType('holiday')">جمعه و تعطیل</button>
+          <button class="btn btn-inactive" style="flex:1;font-size:12px;padding:8px" id="dayHoliday" onclick="setDayType('holiday')">پنجشنبه، جمعه و تعطیل</button>
         </div>
       </div>
       <select id="f-station" onchange="showFullSchedule()">
@@ -449,6 +552,23 @@
       </div>
     </div>
     <div id="fullScheduleResult"></div>
+  </div>
+
+  <!-- TAB: Live Map -->
+  <div class="panel" id="tab-map">
+    <div class="card">
+      <div class="card-title">موقعیت لحظه‌ای قطارها روی خط</div>
+      <div class="map-legend">
+        <span class="map-legend-item"><span class="map-dot-swatch noor"></span> به سمت نور لاله</span>
+        <span class="map-legend-item"><span class="map-dot-swatch ayl"></span> به سمت ائل گؤلی</span>
+      </div>
+      <div id="liveMapWrap" class="live-map-wrap">
+        <svg id="liveMapSvg" viewBox="0 0 320 600" preserveAspectRatio="xMidYMin meet"></svg>
+      </div>
+      <div id="liveMapEmpty" style="display:none;text-align:center;color:var(--muted);font-size:13px;padding:14px;">
+        در حال حاضر هیچ قطاری روی خط در حرکت نیست 🌙
+      </div>
+    </div>
   </div>
 
 </div>
@@ -524,8 +644,26 @@ const HOLIDAY_DEPS_S1_TO_NOOR = [
 const HOLIDAY_DEPS_S18_TO_AYL = generateDepartures(7, 40, 16, 20, 44);
 
 // ============================================================
-// HELPERS
+// زمان آنلاین ایران (به‌جای ساعت سیستم کاربر)
 // ============================================================
+// به‌جای اتکا به ساعت دستگاه کاربر، ساعت و تاریخ از منابع آنلاین معتبر گرفته
+// ساعتِ فعلیِ ایران را به‌صورت یک Date برمی‌گرداند که فیلدهای UTC آن معادل
+// سال/ماه/روز/ساعت/دقیقه/ثانیه‌ی محلی ایران‌اند (در کل برنامه باید با getUTC* خوانده شود).
+// مستقیماً از ساعت سیستم کاربر خوانده می‌شود و به منطقه‌زمانی Asia/Tehran تبدیل می‌شود.
+function ironNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(new Date());
+  const g = t => parseInt(parts.find(p => p.type === t).value, 10);
+  const hh = g('hour') % 24;
+  return new Date(Date.UTC(g('year'), g('month') - 1, g('day'), hh, g('minute'), g('second')));
+}
+
+// ============================================================
+// تعطیلات رسمی ایران — از جدول محلی زیر خوانده می‌شود (بدون اتصال به سرویس آنلاین)
+// ============================================================
+
 // تعطیلات رسمی ایران ۱۴۰۵ — تبدیل‌شده به میلادی (YYYY-MM-DD)
 const IRAN_HOLIDAYS_1405 = new Set([
   // فروردین
@@ -562,21 +700,25 @@ const IRAN_HOLIDAYS_1405 = new Set([
   '2027-03-20', // ۲۹ اسفند — روز ملی شدن نفت / نوروز ۱۴۰۶
 ]);
 
+function dateKeyOf(d) {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
 function isHolidayToday() {
-  const d = new Date();
-  if (d.getDay() === 5) return true; // جمعه همیشه تعطیله
-  const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
-  return IRAN_HOLIDAYS_1405.has(key);
+  const d = ironNow();
+  if (d.getUTCDay() === 4 || d.getUTCDay() === 5) return true; // پنجشنبه و جمعه همیشه با جدول تعطیل حساب می‌شن
+  const dateKey = dateKeyOf(d);
+  return IRAN_HOLIDAYS_1405.has(dateKey);
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
 function minToStr(m) { return `${pad(Math.floor(m/60))}:${pad(m%60)}`; }
 function strToMin(s) { const [h,m]=s.split(':').map(Number); return h*60+m; }
 function nowMin() {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  const d = ironNow();
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
-function nowSec() { const d=new Date(); return d.getSeconds(); }
+function nowSec() { return ironNow().getUTCSeconds(); }
 
 function getStationIdx(id) { return id - 1; } // 0-based
 
@@ -737,6 +879,7 @@ function init() {
     updateClock();
     liveTickNextTrains();
     liveTickFullSchedule();
+    liveTickMap(false);
   }, 1000);
 
   // rebuild کامل هر دقیقه
@@ -750,17 +893,19 @@ function init() {
 }
 
 function updateClock() {
-  const now = new Date();
-  const h = pad(now.getHours()), m = pad(now.getMinutes()), s = pad(now.getSeconds());
+  const now = ironNow();
+  const h = pad(now.getUTCHours()), m = pad(now.getUTCMinutes()), s = pad(now.getUTCSeconds());
   document.getElementById('clock').textContent = `${h}:${m}:${s}`;
 
   const days = ['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه'];
-  const day = days[now.getDay()];
-  const isHol = now.getDay() === 5;
+  const day = days[now.getUTCDay()];
+  const isHol = isHolidayToday();
   const badge = document.getElementById('dayBadge');
-  badge.innerHTML = `<span class="day-badge ${isHol?'holiday':'normal'}">${day} — ${isHol?'جمعه (تعطیل)':'روز عادی'}</span>`;
+  badge.innerHTML = `<span class="day-badge ${isHol?'holiday':'normal'}">${day} — ${isHol?'جدول تعطیل':'روز عادی'}</span>`;
 
-  const dateStr = now.toLocaleDateString('fa-IR', {year:'numeric',month:'long',day:'numeric'});
+  // چون فیلدهای UTC این Date معادل ساعت محلی ایران‌اند، باید صراحتاً با
+  // timeZone:'UTC' نمایش داده شود تا مرورگر دوباره منطقه‌زمانی اعمال نکند
+  const dateStr = now.toLocaleDateString('fa-IR', {timeZone:'UTC', year:'numeric',month:'long',day:'numeric'});
   document.getElementById('dateDisplay').textContent = dateStr;
 }
 
@@ -770,13 +915,14 @@ function updateClock() {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const tabs = ['next','plan','full'];
+    const tabs = ['next','plan','full','map'];
     t.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
   if (tab === 'next') updateNextTrains();
   if (tab === 'full') showFullSchedule();
+  if (tab === 'map') { buildLiveMapBase(); liveTickMap(true); }
 }
 
 // ============================================================
@@ -795,10 +941,10 @@ function swapStations(id1, id2) {
 let _cachedTrains = [];
 let _cachedFromId = 0, _cachedToId = 0;
 
-// زمان فعلی بر حسب ثانیه از نیمه‌شب
+// زمان فعلی (ساعت آنلاین ایران) بر حسب ثانیه از نیمه‌شب
 function nowSecs() {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+  const d = ironNow();
+  return d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
 }
 
 function updateNextTrains() {
@@ -829,13 +975,40 @@ function updateNextTrains() {
   renderNextTrains();
 }
 
+// مدت توقف قطار در ایستگاه مبدأ قبل از حرکت واقعی (ثانیه)
+const NEXT_DWELL_SEC = 30;
+// چند ثانیه بعد از حرکت واقعی هم قطار به عنوان «در حرکت» نشون داده بشه
+const NEXT_DEPART_TRAIL_SEC = 15;
+
+// وضعیت نمایشی شمارش‌معکوس برای یک قطار بر اساس ثانیه‌های باقی‌مانده تا زمان رسمی حرکت
+function getCountdownDisplay(diffSec) {
+  if (diffSec > 0) {
+    if (diffSec < 60) {
+      return { cdClass: 'soon', cdText: `${diffSec} ثانیه دیگر` };
+    }
+    const totalMins = Math.floor(diffSec / 60);
+    const secs = diffSec % 60;
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    const cdClass = totalMins <= 5 ? 'soon' : 'later';
+    const cdText = hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)} دیگر` : `${mins}:${pad(secs)} دقیقه دیگر`;
+    return { cdClass, cdText };
+  }
+  // زمان رسمی حرکت رسیده یا گذشته
+  const sinceSec = -diffSec;
+  if (sinceSec < NEXT_DWELL_SEC) {
+    return { cdClass: 'now', cdText: '🚉 در ایستگاه' };
+  }
+  return { cdClass: 'now', cdText: '🚆 در حرکت' };
+}
+
 function renderNextTrains() {
   const fromId = _cachedFromId, toId = _cachedToId;
   if (!fromId || !toId) return;
 
   const nowS = nowSecs();
-  // قطار تا ۱۵ ثانیه بعد از حرکت نشون داده می‌شه
-  const upcoming = _cachedTrains.filter(t => nowS < t.depFromSec + 15).slice(0, 5);
+  // قطار تا پایان توقف ۳۰ ثانیه‌ای + کمی بعد از حرکت واقعی نشون داده می‌شه
+  const upcoming = _cachedTrains.filter(t => nowS < t.depFromSec + NEXT_DWELL_SEC + NEXT_DEPART_TRAIL_SEC).slice(0, 5);
   const list = document.getElementById('nextTrainsList');
   const toName = STATIONS[toId-1].name;
   const holiday = isHolidayToday();
@@ -848,27 +1021,11 @@ function renderNextTrains() {
 
   list.innerHTML = '';
   upcoming.forEach((t, i) => {
-    const diffSec = t.depFromSec - nowS; // ثانیه مانده
+    const diffSec = t.depFromSec - nowS; // ثانیه تا زمان رسمی حرکت
     const item = document.createElement('div');
     item.className = 'train-item' + (i === 0 ? ' next-train' : '');
 
-    let cdClass, cdText;
-    if (diffSec <= 0) {
-      // همین دقیقه داره حرکت می‌کنه
-      cdClass = 'now';
-      cdText = '🚆 در حرکت';
-    } else if (diffSec < 60) {
-      // کمتر از یک دقیقه
-      cdClass = 'soon';
-      cdText = `${diffSec} ثانیه دیگر`;
-    } else {
-      const totalMins = Math.floor(diffSec / 60);
-      const secs = diffSec % 60;
-      const hrs = Math.floor(totalMins / 60);
-      const mins = totalMins % 60;
-      cdClass = totalMins <= 5 ? 'soon' : 'later';
-      cdText = hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)} دیگر` : `${mins}:${pad(secs)} دقیقه دیگر`;
-    }
+    const { cdClass, cdText } = getCountdownDisplay(diffSec);
 
     item.innerHTML = `
       <div>
@@ -899,7 +1056,7 @@ function liveTickNextTrains() {
   if (currentTab !== 'next' || !_cachedFromId || !_cachedToId) return;
 
   const nowS = nowSecs();
-  const upcoming = _cachedTrains.filter(t => nowS < t.depFromSec + 15).slice(0, 5);
+  const upcoming = _cachedTrains.filter(t => nowS < t.depFromSec + NEXT_DWELL_SEC + NEXT_DEPART_TRAIL_SEC).slice(0, 5);
   const list = document.getElementById('nextTrainsList');
   const items = list.querySelectorAll('.train-item');
 
@@ -916,20 +1073,9 @@ function liveTickNextTrains() {
     const cd = items[i]?.querySelector('.train-countdown');
     if (!cd) return;
     const diffSec = t.depFromSec - nowS;
-    if (diffSec <= 0) {
-      cd.className = 'train-countdown now';
-      cd.textContent = '🚆 در حرکت';
-    } else if (diffSec < 60) {
-      cd.className = 'train-countdown soon';
-      cd.textContent = `${diffSec} ثانیه دیگر`;
-    } else {
-      const totalMins = Math.floor(diffSec / 60);
-      const secs = diffSec % 60;
-      const hrs = Math.floor(totalMins / 60);
-      const mins = totalMins % 60;
-      cd.className = 'train-countdown ' + (totalMins <= 5 ? 'soon' : 'later');
-      cd.textContent = hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)} دیگر` : `${mins}:${pad(secs)} دقیقه دیگر`;
-    }
+    const { cdClass, cdText } = getCountdownDisplay(diffSec);
+    cd.className = 'train-countdown ' + cdClass;
+    cd.textContent = cdText;
   });
 }
 
@@ -1058,7 +1204,7 @@ function showFullSchedule() {
 
   let html = `<div class="card" id="fullScheduleCard">
     <div class="card-title">حرکت از ${stName} — ${fullDir==='noor'?'به سمت نور لاله ←':'به سمت ائل گؤلی ←'}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">${holiday?'جمعه و روزهای تعطیل':'روزهای عادی'} · ${times.length} قطار</div>`;
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">${holiday?'پنجشنبه، جمعه و روزهای تعطیل':'روزهای عادی'} · ${times.length} قطار</div>`;
 
   Object.keys(byHour).sort((a,b)=>a-b).forEach(h => {
     html += `<div style="margin-bottom:8px;">
@@ -1106,6 +1252,252 @@ function liveTickFullSchedule() {
     span.style.background = isNext ? 'var(--accent)' : isPast ? 'rgba(127,127,127,0.08)' : 'var(--surface2)';
     span.style.color = isNext ? 'white' : isPast ? 'var(--muted)' : 'var(--text)';
     span.style.borderColor = isNext ? 'var(--accent)' : 'var(--border)';
+  });
+}
+
+// ============================================================
+// LIVE MAP TAB — serpentine (snake-like) line, dots move along it
+// ============================================================
+// ایستگاه‌ها را به صورت مارپیچی (۳ ایستگاه در هر ردیف، ردیف‌ها به‌طور
+// متناوب از راست‌به‌چپ و چپ‌به‌راست) روی نقشه می‌چینیم تا خط طولانی به
+// شکل فشرده و قابل مشاهده‌تری نمایش داده شود.
+const MAP_COLS = [55, 160, 265];
+const MAP_ROW_SPACING = 92;
+const MAP_Y_TOP = 42;
+const MAP_STATIONS_PER_ROW = 3;
+
+let _mapBaseBuilt = false;
+let _mapTrainEls = {}; // key -> { glow, dot }
+let STATION_POS = [];   // { x, y } برای هر ایستگاه، محاسبه‌شده روی مسیر مارپیچی
+
+function computeStationPositions() {
+  return STATIONS.map((st, i) => {
+    const row = Math.floor(i / MAP_STATIONS_PER_ROW);
+    const col = i % MAP_STATIONS_PER_ROW;
+    const rowReversed = row % 2 === 1;
+    const x = rowReversed ? MAP_COLS[MAP_STATIONS_PER_ROW - 1 - col] : MAP_COLS[col];
+    const y = MAP_Y_TOP + row * MAP_ROW_SPACING;
+    return { x, y };
+  });
+}
+
+// شکستن نام ایستگاه به یک یا دو خط تا زیر نقطه جا شود
+function wrapStationLabel(name) {
+  if (name.length <= 8) return [name];
+  const spaceIdx = name.indexOf(' ');
+  if (spaceIdx === -1) return [name];
+  return [name.slice(0, spaceIdx), name.slice(spaceIdx + 1)];
+}
+
+function buildLiveMapBase() {
+  const svg = document.getElementById('liveMapSvg');
+  if (!svg || _mapBaseBuilt) return;
+
+  STATION_POS = computeStationPositions();
+
+  let pathD = 'M ' + STATION_POS.map(p => `${p.x},${p.y}`).join(' L ');
+  let html = `<path class="map-line" d="${pathD}" />`;
+
+  STATION_POS.forEach((p, i) => {
+    const row = Math.floor(i / MAP_STATIONS_PER_ROW);
+    const isTerminus = (i === 0 || i === STATIONS.length - 1);
+    const r = isTerminus ? 6 : 4;
+    const labelAbove = row % 2 === 0;
+    const lines = wrapStationLabel(STATIONS[i].name);
+    // در هر دو حالت (بالا/پایین نقطه) خطوط باید از بالا به پایین به همان
+    // ترتیب متن اصلی چیده شوند؛ وقتی برچسب بالای نقطه است، باید از فاصله‌ی
+    // دورتر شروع کنیم و به سمت نقطه نزدیک شویم، نه برعکس.
+    const lineStep = 8;
+    const baseY = labelAbove ? (p.y - 10 - lineStep * (lines.length - 1)) : (p.y + 14);
+
+    html += `<circle class="map-station-dot${isTerminus ? ' terminus' : ''}" cx="${p.x}" cy="${p.y}" r="${r}" />`;
+    html += `<text class="map-station-label" x="${p.x}" y="${baseY}" text-anchor="middle">`;
+    lines.forEach((line, li) => {
+      html += `<tspan x="${p.x}" dy="${li === 0 ? 0 : lineStep}">${line}</tspan>`;
+    });
+    html += `</text>`;
+  });
+
+  svg.setAttribute('viewBox', `0 0 320 ${MAP_Y_TOP + (Math.ceil(STATIONS.length / MAP_STATIONS_PER_ROW) - 1) * MAP_ROW_SPACING + 40}`);
+  svg.innerHTML = html + '<g id="mapTrainsLayer"></g>';
+
+  // آرایه‌های معکوس برای جهت نور لاله ← ائل گؤلی (همون مسیر ولی طی‌شده از انتها به ابتدا)
+  REV_STATION_POS = STATION_POS.slice().reverse();
+  const diffs = [];
+  for (let k = 0; k < TRAVEL_FROM_S1.length - 1; k++) diffs.push(TRAVEL_FROM_S1[k + 1] - TRAVEL_FROM_S1[k]);
+  const revDiffs = diffs.slice().reverse();
+  REV_TRAVEL = [0];
+  let acc = 0;
+  revDiffs.forEach(d => { acc += d; REV_TRAVEL.push(acc); });
+
+  _mapBaseBuilt = true;
+}
+
+// مدت توقف قطار در هر ایستگاه میانی روی نقشه (ثانیه)
+const MAP_DWELL_SEC = 30;
+let REV_STATION_POS = [];
+let REV_TRAVEL = [];
+
+// موقعیت (x,y) و بردار جهت مسیر به ازای «دقیقه طی‌شده از مبدأ»، با درون‌یابی خطی بین دو ایستگاه مجاور
+// و با در نظر گرفتن ۳۰ ثانیه توقف در ابتدای هر بازه (به جز بازهٔ اول، بلافاصله بعد از حرکت از مبدأ)
+function getPositionAlong(elapsedMin, posArr, travelArr) {
+  let i = 0;
+  while (i < travelArr.length - 2 && elapsedMin > travelArr[i + 1]) i++;
+  const segStartMin = travelArr[i], segEndMin = travelArr[i + 1];
+  const segDurSec = (segEndMin - segStartMin) * 60;
+  let inSegSec = (elapsedMin - segStartMin) * 60;
+  inSegSec = Math.min(Math.max(inSegSec, 0), segDurSec);
+
+  const dwellSec = i > 0 ? Math.min(MAP_DWELL_SEC, segDurSec) : 0;
+  let frac;
+  const stopped = inSegSec <= dwellSec && dwellSec > 0; // در حال توقف در ایستگاه i است
+  if (inSegSec <= dwellSec) {
+    frac = 0;
+  } else {
+    const travelSec = segDurSec - dwellSec;
+    frac = travelSec > 0 ? (inSegSec - dwellSec) / travelSec : 1;
+  }
+  frac = Math.min(Math.max(frac, 0), 1);
+
+  const p0 = posArr[i], p1 = posArr[i + 1];
+  const x = p0.x + (p1.x - p0.x) * frac;
+  const y = p0.y + (p1.y - p0.y) * frac;
+  let dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x, y, ux: dx / len, uy: dy / len, stopped };
+}
+
+// مدت توقف/گردش قطار در ایستگاه پایانی (نور لاله یا ائل گؤلی) پس از رسیدن.
+// فاصلهٔ زمانی بین رسیدن قطار به ایستگاه پایانی و حرکت قطار بعدی از همان
+// ایستگاه، در جدول رسمی (با دقتِ دقیقه‌ای) عملاً ۰ دقیقه ثبت شده، اما چون
+// این خط با تعداد محدودی واگن (۵ واگن) کار می‌کند، توقف واقعی نمی‌تواند صفر
+// باشد و باید یک توقفِ کوتاهِ ثابت برای گردش در نظر گرفته شود. با احتساب
+// توقف صفر، حداکثر تعداد قطار هم‌زمانِ فعال روی خط دقیقاً ۵ درمی‌آید — منطبق
+// با تعداد واقعی واگن‌های خط — پس یک توقفِ ۳۰ ثانیه‌ای (که در دقتِ دقیقه‌ایِ
+// جدول رسمی اصلاً نمایان نمی‌شود) مقدار سازگار و واقع‌گرایانه‌ای است.
+const MAP_TERMINUS_DWELL_MIN = 0.5; // ۳۰ ثانیه
+
+// موقعیت لحظه‌ای همه قطارهای فعال (هر دو جهت) بر حسب زمان واقعی
+function computeActiveMapTrains() {
+  const holiday = isHolidayToday();
+  const nowS = nowSecs();
+  const nowM = nowS / 60;
+  const total = TRAVEL_FROM_S1[TRAVEL_FROM_S1.length - 1]; // ۳۵ دقیقه
+  const totalSec = total * 60;
+  const list = [];
+
+  const depsS1 = getDepsFromS1(holiday);
+  const depsS18 = getDepsFromS18(holiday);
+
+  depsS1.forEach(depMin => {
+    const elapsedSec = nowS - depMin * 60;
+    if (elapsedSec < 0) return;
+    if (elapsedSec <= totalSec) {
+      const pos = getPositionAlong(elapsedSec / 60, STATION_POS, TRAVEL_FROM_S1);
+      list.push({ key: 'noor_' + depMin, dir: 'noor', x: pos.x, y: pos.y, stopped: pos.stopped });
+    } else {
+      // قطار به ایستگاه آخر رسیده؛ به مدت توقف/گردش در همان ایستگاه می‌ماند
+      // و سپس از دید خارج می‌شود
+      const arrivalMin = depMin + total;
+      if (nowM <= arrivalMin + MAP_TERMINUS_DWELL_MIN) {
+        const last = STATION_POS[STATION_POS.length - 1];
+        list.push({ key: 'noor_' + depMin, dir: 'noor', x: last.x, y: last.y, stopped: true });
+      }
+    }
+  });
+
+  depsS18.forEach(depMin => {
+    const elapsedSec = nowS - depMin * 60;
+    if (elapsedSec < 0) return;
+    if (elapsedSec <= totalSec) {
+      const pos = getPositionAlong(elapsedSec / 60, REV_STATION_POS, REV_TRAVEL);
+      list.push({ key: 'ayl_' + depMin, dir: 'ayl', x: pos.x, y: pos.y, stopped: pos.stopped });
+    } else {
+      const arrivalMin = depMin + total;
+      if (nowM <= arrivalMin + MAP_TERMINUS_DWELL_MIN) {
+        const last = REV_STATION_POS[REV_STATION_POS.length - 1];
+        list.push({ key: 'ayl_' + depMin, dir: 'ayl', x: last.x, y: last.y, stopped: true });
+      }
+    }
+  });
+
+  return list;
+}
+
+function liveTickMap(force) {
+  if (currentTab !== 'map' && !force) return;
+  buildLiveMapBase();
+  const layer = document.getElementById('mapTrainsLayer');
+  const emptyEl = document.getElementById('liveMapEmpty');
+  const wrapEl = document.getElementById('liveMapWrap');
+  if (!layer) return;
+
+  const active = computeActiveMapTrains();
+  emptyEl.style.display = active.length === 0 ? 'block' : 'none';
+  wrapEl.style.display = active.length === 0 ? 'none' : 'flex';
+
+  const seenKeys = new Set();
+  active.forEach(t => {
+    seenKeys.add(t.key);
+    let entry = _mapTrainEls[t.key];
+
+    if (!entry) {
+      const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      halo.setAttribute('r', '14');
+      halo.setAttribute('cx', t.x);
+      halo.setAttribute('cy', t.y);
+      halo.setAttribute('class', 'map-train-halo dir-' + t.dir);
+      halo.style.transition = 'none';
+
+      const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      glow.setAttribute('r', '9');
+      glow.setAttribute('cx', t.x);
+      glow.setAttribute('cy', t.y);
+      glow.setAttribute('class', 'map-train-glow dir-' + t.dir);
+      glow.style.transition = 'none';
+
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('r', '5');
+      dot.setAttribute('cx', t.x);
+      dot.setAttribute('cy', t.y);
+      dot.setAttribute('class', 'map-train dir-' + t.dir);
+      dot.style.transition = 'none';
+
+      layer.appendChild(halo);
+      layer.appendChild(glow);
+      layer.appendChild(dot);
+      entry = { halo, glow, dot };
+      _mapTrainEls[t.key] = entry;
+
+      // فعال کردن انیمیشن حرکت از فریم بعدی به بعد
+      requestAnimationFrame(() => {
+        halo.style.transition = '';
+        glow.style.transition = '';
+        dot.style.transition = '';
+      });
+    } else {
+      entry.halo.setAttribute('cx', t.x);
+      entry.halo.setAttribute('cy', t.y);
+      entry.glow.setAttribute('cx', t.x);
+      entry.glow.setAttribute('cy', t.y);
+      entry.dot.setAttribute('cx', t.x);
+      entry.dot.setAttribute('cy', t.y);
+    }
+
+    // چشمک زدن وقتی قطار در ایستگاه توقف کرده
+    entry.halo.classList.toggle('stopped', !!t.stopped);
+    entry.glow.classList.toggle('stopped', !!t.stopped);
+    entry.dot.classList.toggle('stopped', !!t.stopped);
+  });
+
+  // حذف قطارهایی که سفرشان تمام شده
+  Object.keys(_mapTrainEls).forEach(key => {
+    if (!seenKeys.has(key)) {
+      _mapTrainEls[key].halo.remove();
+      _mapTrainEls[key].glow.remove();
+      _mapTrainEls[key].dot.remove();
+      delete _mapTrainEls[key];
+    }
   });
 }
 
